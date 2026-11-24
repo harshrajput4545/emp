@@ -83,6 +83,14 @@ pipeline {
                     )
                 ]) {
                     powershell '''
+                        # Fix SSH private key permissions
+                        icacls "$env:SSH_KEY" /inheritance:r
+                        icacls "$env:SSH_KEY" /grant:r "SYSTEM:(R)"
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Failed to set SSH key permissions"
+                        }
+
                         $remote = "$env:SSH_USER@$env:EC2_HOST"
 
                         $remoteCommand = "set -e; aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin 385723258875.dkr.ecr.ap-south-1.amazonaws.com; sudo docker pull 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest; sudo docker rm -f pgl-app || true; sudo docker run -d --name pgl-app --restart unless-stopped -p 3000:3000 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest"
@@ -102,6 +110,7 @@ pipeline {
         success {
             echo 'Application deployed successfully!'
         }
+
         failure {
             echo 'Pipeline failed. Check Console Output.'
         }
