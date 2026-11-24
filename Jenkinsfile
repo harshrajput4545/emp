@@ -45,11 +45,22 @@ pipeline {
                     powershell '''
                         $env:AWS_DEFAULT_REGION = $env:AWS_REGION
 
-                        aws ecr get-login-password --region $env:AWS_REGION |
-                        docker login --username AWS --password-stdin $env:ECR_REGISTRY
+                        aws sts get-caller-identity
 
                         if ($LASTEXITCODE -ne 0) {
-                            throw "ECR login failed"
+                            throw "AWS authentication failed"
+                        }
+
+                        $password = aws ecr get-login-password --region $env:AWS_REGION
+
+                        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($password)) {
+                            throw "ECR password generation failed"
+                        }
+
+                        $password | docker login --username AWS --password-stdin $env:ECR_REGISTRY
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker ECR login failed"
                         }
                     '''
                 }
