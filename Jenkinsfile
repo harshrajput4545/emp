@@ -51,13 +51,7 @@ pipeline {
                             throw "AWS authentication failed"
                         }
 
-                        $password = aws ecr get-login-password --region $env:AWS_REGION
-
-                        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($password)) {
-                            throw "ECR password generation failed"
-                        }
-
-                        $password | docker login --username AWS --password-stdin $env:ECR_REGISTRY
+                        cmd.exe /c "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 385723258875.dkr.ecr.ap-south-1.amazonaws.com"
 
                         if ($LASTEXITCODE -ne 0) {
                             throw "Docker ECR login failed"
