@@ -7,14 +7,13 @@ pipeline {
         AWS_ACCOUNT_ID = '385723258875'
         ECR_REPOSITORY = 'pgl-app'
         IMAGE_TAG = 'latest'
-        EC2_HOST = 'YOUR_EC2_PUBLIC_IP'
+        EC2_HOST = '3.108.250.95'
 
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_IMAGE = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 echo 'Checking out source code...'
@@ -30,9 +29,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                powershell '''
-                    docker build -t $env:ECR_IMAGE .
-                '''
+                powershell 'docker build -t $env:ECR_IMAGE .'
             }
         }
 
@@ -46,8 +43,14 @@ pipeline {
                     )
                 ]) {
                     powershell '''
+                        $env:AWS_DEFAULT_REGION = $env:AWS_REGION
+
                         aws ecr get-login-password --region $env:AWS_REGION |
                         docker login --username AWS --password-stdin $env:ECR_REGISTRY
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "ECR login failed"
+                        }
                     '''
                 }
             }
@@ -57,6 +60,10 @@ pipeline {
             steps {
                 powershell '''
                     docker push $env:ECR_IMAGE
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker push failed"
+                    }
                 '''
             }
         }
@@ -73,9 +80,13 @@ pipeline {
                     powershell '''
                         $remote = "$env:SSH_USER@$env:EC2_HOST"
 
-                        ssh -i "$env:SSH_KEY" -o StrictHostKeyChecking=accept-new $remote "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 385723258875.dkr.ecr.ap-south-1.amazonaws.com && docker pull 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest && docker rm -f pgl-app 2>/dev/null || true"
+                        $remoteCommand = "set -e; aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin 385723258875.dkr.ecr.ap-south-1.amazonaws.com; sudo docker pull 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest; sudo docker rm -f pgl-app || true; sudo docker run -d --name pgl-app --restart unless-stopped -p 3000:3000 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest"
 
-                        ssh -i "$env:SSH_KEY" -o StrictHostKeyChecking=accept-new $remote "docker run -d --name pgl-app --restart unless-stopped -p 3000:3000 385723258875.dkr.ecr.ap-south-1.amazonaws.com/pgl-app:latest"
+                        ssh -i "$env:SSH_KEY" -o StrictHostKeyChecking=accept-new $remote $remoteCommand
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "EC2 deployment failed"
+                        }
                     '''
                 }
             }
@@ -86,7 +97,6 @@ pipeline {
         success {
             echo 'Application deployed successfully!'
         }
-
         failure {
             echo 'Pipeline failed. Check Console Output.'
         }
